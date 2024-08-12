@@ -1,6 +1,7 @@
 import express from 'express';
 import OpenAI from 'openai';
 import { config } from 'dotenv';
+import cors from 'cors';
 
 config();
 
@@ -11,6 +12,7 @@ const openai = new OpenAI({
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.use(cors());
 app.use(express.json());
 
 app.post('/api/diary', async (req, res) => {
