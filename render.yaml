@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: openai-api-backend
+    env: node
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    deployCommand: "npm run deploy"
