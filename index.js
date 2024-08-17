@@ -61,7 +61,7 @@ app.get('/api/speech', async (req, res) => {
             });
 
             const buffer = Buffer.from(await mp3Response.arrayBuffer());
-            await fs.promises.writeFile(speechFilePath, buffer);
+            await fs.promises.writeFile(speechFile, buffer);
 
             res.set('Content-Type', 'audio/mpeg');
             res.send(buffer);
