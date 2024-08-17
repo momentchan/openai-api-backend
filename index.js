@@ -54,7 +54,7 @@ app.get('/api/speech', async (req, res) => {
         console.log(text);
 
         try {
-            const mp3 = await openai.audio.speech.create({
+            const mp3Response  = await openai.audio.speech.create({
                 model: "tts-1",
                 voice: 'onyx',
                 input: text
