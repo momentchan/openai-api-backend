@@ -4,6 +4,7 @@ import { config } from 'dotenv';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 
 
 config();
@@ -54,7 +55,7 @@ app.get('/api/speech', async (req, res) => {
         console.log(text);
 
         try {
-            const mp3Response  = await openai.audio.speech.create({
+            const mp3Response = await openai.audio.speech.create({
                 model: "tts-1",
                 voice: 'onyx',
                 input: text
@@ -70,6 +71,32 @@ app.get('/api/speech', async (req, res) => {
         }
     }
 })
+
+// Dummy endpoint
+app.get('/keep-alive', (req, res) => {
+    res.status(200).send('Server is alive');
+});
+
+// self-referencing
+const url = `https://openai-api-backend.onrender.com/keep-alive`;
+const interval = 800000; // 5 minutes
+
+function reloadWebsite() {
+    axios.get(url)
+        .then(response => {
+            console.log(`Reloaded at ${new Date().toISOString()}: Status Code ${response.status}`);
+        })
+        .catch(error => {
+            console.error(`Error reloading at ${new Date().toISOString()}:`, error.message);
+        })
+        .finally(() => {
+            // Schedule the next reload after the current one completes
+            setTimeout(reloadWebsite, interval);
+        });
+}
+
+// Start the first reload
+reloadWebsite();
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
