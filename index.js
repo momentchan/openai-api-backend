@@ -16,6 +16,7 @@ const openai = new OpenAI({
 const app = express();
 const port = process.env.PORT || 3000;
 const speechFile = path.resolve('./speech.mp3')
+const transcriptionFile = path.resolve('./transcription.json');
 
 app.use(cors());
 app.use(express.json());
@@ -71,6 +72,50 @@ app.get('/api/speech', async (req, res) => {
         }
     }
 })
+
+// Route to generate speech from text and transcribe with timestamps
+app.post('/api/speech-and-transcribe', async (req, res) => {
+    const { text } = req.body;
+
+    if (!text) {
+        return res.status(400).json({ error: 'Text parameter is required' });
+    }
+
+    try {
+        // 1. Generate speech from text
+        const mp3Response = await openai.audio.speech.create({
+            model: "tts-1",
+            voice: 'onyx',
+            input: text
+        });
+
+        const buffer = Buffer.from(await mp3Response.arrayBuffer());
+        await fs.promises.writeFile(speechFile, buffer);
+
+        // Encode audio file as base64
+        const audioBase64 = buffer.toString('base64');
+
+        // 2. Transcribe the generated audio with timestamps
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(speechFile),
+            model: "whisper-1",
+            response_format: "verbose_json",
+            timestamp_granularities: ["word"]
+        });
+
+        // Save transcription for debugging or further processing
+        await fs.promises.writeFile(transcriptionFile, JSON.stringify(transcription, null, 2));
+
+        // 3. Send both audio and transcription
+        res.json({
+            audioBase64: `data:audio/mp3;base64,${audioBase64}`, // Base64 encoded audio
+            transcription: transcription
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Error processing request: ' + error.message });
+    }
+});
 
 // Dummy endpoint
 app.get('/keep-alive', (req, res) => {
