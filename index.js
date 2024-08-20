@@ -100,7 +100,7 @@ app.post('/api/speech-and-transcribe', async (req, res) => {
             file: fs.createReadStream(speechFile),
             model: "whisper-1",
             response_format: "verbose_json",
-            timestamp_granularities: ["word"]
+            timestamp_granularities: ["segment"]
         });
 
         // Save transcription for debugging or further processing
