@@ -107,9 +107,11 @@ app.post('/api/speech-and-transcribe', async (req, res) => {
         await fs.promises.writeFile(transcriptionFile, JSON.stringify(transcription, null, 2));
 
         // 3. Send both audio and transcription
+        const base64 = buffer.toString('base64'); 
         res.json({
-            audioBase64: `data:audio/mp3;base64,${audioBase64}`, // Base64 encoded audio
-            transcription: transcription
+          audioBase64: base64,
+          mime: "audio/mpeg",          
+          transcription: transcription
         });
 
     } catch (error) {
