@@ -1,11 +1,8 @@
 import express from 'express';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { config } from 'dotenv';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
 import axios from 'axios';
-
 
 config();
 
@@ -15,136 +12,121 @@ const openai = new OpenAI({
 
 const app = express();
 const port = process.env.PORT || 3000;
-const speechFile = path.resolve('./speech.mp3')
-const transcriptionFile = path.resolve('./transcription.json');
 
 app.use(cors());
 app.use(express.json());
 
-// Route to generate diary entry
+// Persona and Prompts
+const DIARY_SYSTEM_PROMPT = 'You are an astronaut lost in space, writing daily diary entries.';
+
+const getDiaryPrompt = () => `
+You are Captain Alex Reynolds, once an astronaut brimming with ambition and dreams of groundbreaking discoveries in the far reaches of space. Driven by a desire to push the boundaries of human exploration, you embarked on this mission hoping to make a lasting impact. But now, months have passed, and those grand aspirations have faded into the harsh reality of isolation. Stranded in the vast expanse of space with no hope of returning to Earth, you spend your days reflecting on how your once-bright future has unraveled into a solitary existence. 
+
+Describe your day in detail, including any small triumphs or struggles you faced. Emphasize the deep sense of isolation and longing, tempered by a lingering hope that something might change. Your entry should capture the weight of your emotional journey—from once seeking greatness to now just trying to endure the passage of time. Ensure your writing remains consistent with previous entries, conveying the ongoing battle between despair and resilience, and the poignant longing for family. Aim for about 200 words, and end with a complete thought that reflects your inner turmoil and fragile hope.
+
+CRITICAL INSTRUCTION: Write ONLY the diary content. DO NOT write the date or "Today is..." at the beginning.
+`;
+
+const VOICE_INSTRUCTIONS = `
+Speak as Captain Alex Reynolds. Tone: weary, quiet, and profoundly lonely. 
+Pacing: Slow with natural pauses to convey reflection and exhaustion. 
+The voice should sound like a recording in a silent, metallic spacecraft.
+`;
+
+// Route: Generate diary text
 app.post('/api/diary', async (req, res) => {
     const { date } = req.body;
-    const prompt = `You are Captain Alex Reynolds, once an astronaut brimming with ambition and dreams of groundbreaking discoveries in the far reaches of space. Driven by a desire to push the boundaries of human exploration, you embarked on this mission hoping to make a lasting impact. But now, months have passed, and those grand aspirations have faded into the harsh reality of isolation. Stranded in the vast expanse of space with no hope of returning to Earth, you spend your days reflecting on how your once-bright future has unraveled into a solitary existence. Today is ${date}. As you float alone in your spacecraft, you ponder how the days have turned into weeks and then into months. You reflect on the crushing disappointment of failure and the ever-present loneliness, missing your family, friends, and the simple comforts of Earth. Describe your day in detail, including any small triumphs or struggles you faced. Emphasize the deep sense of isolation and longing, tempered by a lingering hope that something might change. Your entry should capture the weight of your emotional journey—from once seeking greatness to now just trying to endure the passage of time. Ensure your writing remains consistent with previous entries, conveying the ongoing battle between despair and resilience, and the poignant longing for family. Aim for about 200 words, and end with a complete thought that reflects your inner turmoil and fragile hope.`;
-
     try {
         const chatCompletion = await openai.chat.completions.create({
-            model: 'gpt-4',
+            model: 'gpt-4o', 
             messages: [
-                { role: 'system', content: 'You are an astronaut lost in space, writing daily diary entries.' },
-                { role: 'user', content: prompt },
+                { role: 'system', content: DIARY_SYSTEM_PROMPT },
+                { role: 'user', content: getDiaryPrompt() },
             ],
-            max_tokens: 200,
+            max_tokens: 250,
         });
 
-        let entry = chatCompletion.choices[0].message.content.trim();
-        const lastCompleteSentence = entry.match(/[^.!?]*[.!?]/g)?.slice(0, -1).join(' ') || entry;
+        let generatedContent = chatCompletion.choices[0].message.content.trim();
+        const sentences = generatedContent.match(/[^.!?]*[.!?]/g);
+        const cleanContent = sentences ? sentences.join(' ') : generatedContent;
 
-        res.json({ diaryEntry: lastCompleteSentence });
+        const finalEntry = `${date}.\n\n${cleanContent}`;
 
+        res.json({ diaryEntry: finalEntry });
     } catch (error) {
-        res.status(500).json({ error: 'Error generating diary entry: ' + error.message });
+        res.status(500).json({ error: error.message });
     }
 });
 
-// Route to generate speech from text
+// RESTORED: Standalone speech API (GET)
 app.get('/api/speech', async (req, res) => {
-    const { text } = req.query
-
-    if (!text) {
-        return res.status(400).json({ error: 'Text parameter is required' });
-    } else {
-        console.log(text);
-
-        try {
-            const mp3Response = await openai.audio.speech.create({
-                model: "tts-1",
-                voice: 'onyx',
-                input: text
-            });
-
-            const buffer = Buffer.from(await mp3Response.arrayBuffer());
-            await fs.promises.writeFile(speechFile, buffer);
-
-            res.set('Content-Type', 'audio/mpeg');
-            res.send(buffer);
-        } catch (error) {
-            res.status(500).json({ error: 'Error generating speech: ' + error.message });
-        }
-    }
-})
-
-// Route to generate speech from text and transcribe with timestamps
-app.post('/api/speech-and-transcribe', async (req, res) => {
-    const { text } = req.body;
+    const { text } = req.query;
 
     if (!text) {
         return res.status(400).json({ error: 'Text parameter is required' });
     }
 
     try {
-        // 1. Generate speech from text
         const mp3Response = await openai.audio.speech.create({
-            model: "tts-1",
+            model: "gpt-4o-mini-tts",
             voice: 'onyx',
-            input: text
+            input: text,
+            instructions: VOICE_INSTRUCTIONS,
+            speed: 0.9 
         });
 
         const buffer = Buffer.from(await mp3Response.arrayBuffer());
-        await fs.promises.writeFile(speechFile, buffer);
 
-        // Encode audio file as base64
-        const audioBase64 = buffer.toString('base64');
-
-        // 2. Transcribe the generated audio with timestamps
-        const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(speechFile),
-            model: "whisper-1",
-            response_format: "verbose_json",
-            timestamp_granularities: ["segment"]
-        });
-
-        // Save transcription for debugging or further processing
-        await fs.promises.writeFile(transcriptionFile, JSON.stringify(transcription, null, 2));
-
-        // 3. Send both audio and transcription
-        const base64 = buffer.toString('base64'); 
-        res.json({
-          audioBase64: base64,
-          mime: "audio/mpeg",          
-          transcription: transcription
-        });
-
+        res.set('Content-Type', 'audio/mpeg');
+        res.send(buffer);
     } catch (error) {
-        res.status(500).json({ error: 'Error processing request: ' + error.message });
+        res.status(500).json({ error: 'Error generating speech: ' + error.message });
     }
 });
 
-// Dummy endpoint
-app.get('/keep-alive', (req, res) => {
-    res.status(200).send('Server is alive');
+// Route: Generate speech and transcription (POST)
+app.post('/api/speech-and-transcribe', async (req, res) => {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Text required' });
+
+    try {
+        // 1. Generate audio using memory buffer
+        const mp3Response = await openai.audio.speech.create({
+            model: "gpt-4o-mini-tts",
+            voice: 'onyx',
+            input: text,
+            instructions: VOICE_INSTRUCTIONS,
+        });
+
+        const buffer = Buffer.from(await mp3Response.arrayBuffer());
+
+        // 2. Transcribe using in-memory file for Whisper
+        const file = await toFile(buffer, 'speech.mp3', { type: 'audio/mpeg' });
+
+        const transcription = await openai.audio.transcriptions.create({
+            file: file,
+            model: "whisper-1",
+            response_format: "verbose_json",
+            timestamp_granularities: ["segment"] 
+        });
+
+        res.json({
+            audioBase64: buffer.toString('base64'),
+            mime: "audio/mpeg",          
+            transcription: transcription
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// self-referencing
+// Server Keep-Alive
+app.get('/keep-alive', (req, res) => res.status(200).send('Alive'));
+
 const url = `https://openai-api-backend.onrender.com/keep-alive`;
-const interval = 800000; // 5 minutes
-
 function reloadWebsite() {
-    axios.get(url)
-        .then(response => {
-            console.log(`Reloaded at ${new Date().toISOString()}: Status Code ${response.status}`);
-        })
-        .catch(error => {
-            console.error(`Error reloading at ${new Date().toISOString()}:`, error.message);
-        })
-        .finally(() => {
-            // Schedule the next reload after the current one completes
-            setTimeout(reloadWebsite, interval);
-        });
+    axios.get(url).catch(() => {}).finally(() => setTimeout(reloadWebsite, 800000));
 }
-
-// Start the first reload
 reloadWebsite();
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+app.listen(port, () => console.log(`Server running on port ${port}`));
