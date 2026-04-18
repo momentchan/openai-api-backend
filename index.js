@@ -19,18 +19,14 @@ app.use(express.json());
 // Persona and Prompts
 const DIARY_SYSTEM_PROMPT = 'You are an astronaut lost in space, writing daily diary entries.';
 
-const getDiaryPrompt = () => `
-You are Captain Alex Reynolds, once an astronaut brimming with ambition and dreams of groundbreaking discoveries in the far reaches of space. Driven by a desire to push the boundaries of human exploration, you embarked on this mission hoping to make a lasting impact. But now, months have passed, and those grand aspirations have faded into the harsh reality of isolation. Stranded in the vast expanse of space with no hope of returning to Earth, you spend your days reflecting on how your once-bright future has unraveled into a solitary existence. 
-
-Describe your day in detail, including any small triumphs or struggles you faced. Emphasize the deep sense of isolation and longing, tempered by a lingering hope that something might change. Your entry should capture the weight of your emotional journey—from once seeking greatness to now just trying to endure the passage of time. Ensure your writing remains consistent with previous entries, conveying the ongoing battle between despair and resilience, and the poignant longing for family. Aim for about 200 words, and end with a complete thought that reflects your inner turmoil and fragile hope.
-
-CRITICAL INSTRUCTION: Write ONLY the diary content. DO NOT write the date or "Today is..." at the beginning.
-`;
+// Restored to accept the date directly into the text again
+const getDiaryPrompt = (date) => `You are Captain Alex Reynolds, once an astronaut brimming with ambition and dreams of groundbreaking discoveries in the far reaches of space. Driven by a desire to push the boundaries of human exploration, you embarked on this mission hoping to make a lasting impact. But now, months have passed, and those grand aspirations have faded into the harsh reality of isolation. Stranded in the vast expanse of space with no hope of returning to Earth, you spend your days reflecting on how your once-bright future has unraveled into a solitary existence. Today is ${date}. As you float alone in your spacecraft, you ponder how the days have turned into weeks and then into months. You reflect on the crushing disappointment of failure and the ever-present loneliness, missing your family, friends, and the simple comforts of Earth. Describe your day in detail, including any small triumphs or struggles you faced. Emphasize the deep sense of isolation and longing, tempered by a lingering hope that something might change. Your entry should capture the weight of your emotional journey—from once seeking greatness to now just trying to endure the passage of time. Ensure your writing remains consistent with previous entries, conveying the ongoing battle between despair and resilience, and the poignant longing for family. Aim for about 200 words, and end with a complete thought that reflects your inner turmoil and fragile hope.`;
 
 const VOICE_INSTRUCTIONS = `
-Speak as Captain Alex Reynolds. Tone: weary, quiet, and profoundly lonely. 
-Pacing: Slow with natural pauses to convey reflection and exhaustion. 
-The voice should sound like a recording in a silent, metallic spacecraft.
+Speak as Captain Alex Reynolds dictating a personal audio log. 
+Tone: weary, quiet, and profoundly lonely. 
+Pacing: Slow with natural pauses, as if struggling to find the right words due to exhaustion. 
+The voice should sound like an intimate recording in a silent, metallic spacecraft.
 `;
 
 // Route: Generate diary text
@@ -41,16 +37,16 @@ app.post('/api/diary', async (req, res) => {
             model: 'gpt-4o', 
             messages: [
                 { role: 'system', content: DIARY_SYSTEM_PROMPT },
-                { role: 'user', content: getDiaryPrompt() },
+                { role: 'user', content: getDiaryPrompt(date) },
             ],
             max_tokens: 250,
         });
 
         let generatedContent = chatCompletion.choices[0].message.content.trim();
         const sentences = generatedContent.match(/[^.!?]*[.!?]/g);
-        const cleanContent = sentences ? sentences.join(' ') : generatedContent;
-
-        const finalEntry = `${date}.\n\n${cleanContent}`;
+        
+        // No longer forcing the date/linebreak prefix here
+        const finalEntry = sentences ? sentences.join(' ') : generatedContent;
 
         res.json({ diaryEntry: finalEntry });
     } catch (error) {
@@ -129,4 +125,4 @@ function reloadWebsite() {
 }
 reloadWebsite();
 
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.listen(port, () => console.log(`Server running on port ${port}`));  
